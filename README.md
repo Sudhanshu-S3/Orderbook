@@ -55,3 +55,22 @@ Benchmarks cover:
 - **Match latency** — per-trade latency (p50/p95/p99)
 - **Cancel latency** — per-cancel latency (p50/p95/p99)
 - **Mixed workload** — 200k random insert/cancel/match operations
+
+### Results
+
+> Build: `-O3 -march=native`, Release mode
+
+| Benchmark              | Metric        | Value            |
+|------------------------|---------------|------------------|
+| Insertion throughput   | Orders/sec    | ~368k            |
+| Insertion throughput   | Total time    | 271 ms (100k)    |
+| Match latency          | Avg           | 145 ns           |
+| Match latency          | p50           | 140 ns           |
+| Match latency          | p95           | 160 ns           |
+| Match latency          | p99           | 261 ns           |
+| Cancel latency         | Avg           | 64 ns            |
+| Cancel latency         | p50           | 60 ns            |
+| Cancel latency         | p95           | 81 ns            |
+| Cancel latency         | p99           | 110 ns           |
+| Mixed workload         | Ops/sec       | ~2.4M            |
+| Mixed workload         | Total time    | 83 ms (200k ops) |
