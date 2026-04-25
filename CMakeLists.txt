@@ -14,9 +14,9 @@ add_executable(orderbook
 )
 target_include_directories(orderbook PRIVATE include)
 
-add_executable(benchmark
-    benchmark/benchmark.cpp
-    src/Order.cpp
-    src/Orderbook.cpp
-)
-target_include_directories(benchmark PRIVATE include)
+# add_executable(benchmark
+#     benchmark/benchmark.cpp
+#     src/Order.cpp
+#     src/Orderbook.cpp
+# )
+# target_include_directories(benchmark PRIVATE include)

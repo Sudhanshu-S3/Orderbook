@@ -75,22 +75,6 @@ Trades Orderbook::MatchOrders()
             asks_.erase(askPrice);
     }
 
-    if (!bids_.empty())
-    {
-        auto& [_, bids] = *bids_.begin();
-        auto& order = bids.front();
-        if (order->GetOrderType() == OrderType::FillAndKill)
-            CancelOrder(order->GetOrderId());
-    }
-
-    if (!asks_.empty())
-    {
-        auto& [_, asks] = *asks_.begin();
-        auto& order = asks.front();
-        if (order->GetOrderType() == OrderType::FillAndKill)
-            CancelOrder(order->GetOrderId());
-    }
-
     return trades;
 }
 
@@ -108,54 +92,68 @@ Trades Orderbook::AddOrder( OrderPointer order)
     {
         auto& orders = bids_[order->GetPrice()];
         orders.push_back(order);
-        iterator = std::next(orders.begin(), orders.size() - 1);
+        iterator = std::prev(orders.end());
     }
     else
     {
         auto& orders = asks_[order->GetPrice()];
         orders.push_back(order);
-        iterator = std::next(orders.begin(), orders.size() - 1);
+        iterator = std::prev(orders.end());
     }
 
     orders_.insert({ order->GetOrderId(), OrderEntry{ order, iterator }});
-    return MatchOrders();
+
+    auto trades = MatchOrders();
+
+    // FillAndKill: cancel any unfilled remainder of THIS order, by id.
+    // (Replaces the old "peek at best level" cleanup, which missed FAKs not at top-of-book.)
+    if (order->GetOrderType() == OrderType::FillAndKill && orders_.find(order->GetOrderId()) != orders_.end())
+        CancelOrder(order->GetOrderId());
+
+    return trades;
 }
 
-void Orderbook::CancelOrder( OrderId orderId)
+void Orderbook::CancelOrder(OrderId orderId)
 {
-    if (!orders_.contains(orderId))
-        return ;
+    auto it = orders_.find(orderId);
+    if (it == orders_.end())
+        return;
 
-    const auto& [order, iterator] = orders_.at(orderId);
-    orders_.erase(orderId);
+    OrderPointer order        = it->second.order_;       // copy: keeps Order alive
+    OrderPointers::iterator location = it->second.location_;  // copy: by value
+    orders_.erase(it);
+
+    auto price = order->GetPrice();
 
     if (order->GetSide() == Side::Sell)
     {
-        auto price = order->GetPrice();
         auto& orders = asks_.at(price);
-        orders.erase(iterator);
-
-        if(orders.empty())
+        orders.erase(location);
+        if (orders.empty())
             asks_.erase(price);
     }
     else
     {
-        auto price = order->GetPrice();
         auto& orders = bids_.at(price);
-        orders.erase(iterator);
-        if ( orders.empty())
+        orders.erase(location);
+        if (orders.empty())
             bids_.erase(price);
     }
 }
 
-Trades Orderbook::ModifyOrder( OrderModify order)
+
+Trades Orderbook::ModifyOrder(OrderModify order)
 {
-    if (!orders_.contains(order.GetOrderId()))
+    auto it = orders_.find(order.GetOrderId());
+    if (it == orders_.end())
         return { };
 
-    const auto& [existingOrder, _] = orders_.at(order.GetOrderId());
+    // Copy by value BEFORE CancelOrder runs — otherwise the shared_ptr's last
+    // refcount lives in the map node CancelOrder is about to erase, and reading
+    // existingOrder->GetOrderType() afterwards is a use-after-free.
+    OrderType existingType = it->second.order_->GetOrderType();
     CancelOrder(order.GetOrderId());
-    return AddOrder(order.ToOrderPointer(existingOrder->GetOrderType()));
+    return AddOrder(order.ToOrderPointer(existingType));
 }
 
 OrderbookLevelInfos Orderbook::GetOrderInfos() const
