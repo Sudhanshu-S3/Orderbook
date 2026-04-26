@@ -23,9 +23,7 @@ Orderbook/
 ├── src/
 │   ├── Order.cpp        # Order implementation
 │   ├── Orderbook.cpp    # Orderbook matching engine
-│   └── main.cpp         # Entry point / tests
-├── benchmark/
-│   └── benchmark.cpp    # Latency and throughput benchmarks
+│   └── main.cpp         # Entry point / smoke test
 └── CMakeLists.txt
 ```
 
@@ -44,33 +42,19 @@ cmake --build build
 ./build/orderbook
 ```
 
-## Benchmark
+## Bug Fixes
 
-```bash
-./build/benchmark
-```
-
-Benchmarks cover:
-- **Insertion throughput** — 100k orders with no matches
-- **Match latency** — per-trade latency (p50/p95/p99)
-- **Cancel latency** — per-cancel latency (p50/p95/p99)
-- **Mixed workload** — 200k random insert/cancel/match operations
-
-### Results
-
-> Build: `-O3 -march=native`, Release mode
-
-| Benchmark              | Metric        | Value            |
-|------------------------|---------------|------------------|
-| Insertion throughput   | Orders/sec    | ~368k            |
-| Insertion throughput   | Total time    | 271 ms (100k)    |
-| Match latency          | Avg           | 145 ns           |
-| Match latency          | p50           | 140 ns           |
-| Match latency          | p95           | 160 ns           |
-| Match latency          | p99           | 261 ns           |
-| Cancel latency         | Avg           | 64 ns            |
-| Cancel latency         | p50           | 60 ns            |
-| Cancel latency         | p95           | 81 ns            |
-| Cancel latency         | p99           | 110 ns           |
-| Mixed workload         | Ops/sec       | ~2.4M            |
-| Mixed workload         | Total time    | 83 ms (200k ops) |
+- **Heap use-after-free in `CancelOrder` and `ModifyOrder`** — structured
+  bindings (`const auto& [order, iterator] = orders_.at(...)`) bound
+  references into the `unordered_map` node that was then erased. Reads
+  through those references afterwards were undefined behavior. Fix copies
+  the `shared_ptr` and iterator to locals before erasing, and folds
+  `contains` + `at` + `erase(key)` into a single `find` + `erase(it)`.
+- **O(n) iterator lookup in `AddOrder`** — `std::next(orders.begin(), orders.size() - 1)`
+  walks the entire price-level list on every insert because `std::list`
+  iterators are bidirectional, not random-access. Replaced with
+  `std::prev(orders.end())`, which is O(1).
+- **FillAndKill cleanup only inspected top-of-book** — the post-match
+  cleanup peeked at the best price level's front order, missing FAK
+  remainders elsewhere. Replaced with an id-based cancel of the incoming
+  order's remainder, performed in `AddOrder` after matching.
